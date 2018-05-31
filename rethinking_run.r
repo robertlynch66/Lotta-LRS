@@ -1,82 +1,150 @@
 # Lottas childless before war model
 library(dplyr)
 library(rethinking)
-
+library(tidyr)
 # path to the folder with the R data files
 path<- (paste0("~/r_files/"))
-
+# read in person table
 file<- "person_data.rds"
 p <- readRDS(paste0(path, file))
-# donkey
-################################################################################################################
-######################Model 2####################################################################
-################################################################################################
-################Women who got married before war or never married############
-######################################################################################
+# read in children table
+children <- readRDS("~/r_files/children.rds")
+
+# convert booleans to numeric
+p$martta<- as.numeric(p$martta)
 p$lotta<- as.numeric(p$lotta)
 p$never_married <- ifelse(is.na(p$spouse_id), 1, 0)
-p$servedduringwar_husband<- as.numeric(p$servedduringwar_husband)
-# replace NAs with 0's for unmarrieds in husband served and husband injured cats
-p$servedduringwar_husband[p$never_married==1]<- 0
-p$injuredinwar_husband<- as.numeric(p$injuredinwar_husband)
-p$injuredinwar_husband[p$never_married==1]<- 0
-p$outbred2 <- ifelse(p$outbred==0 | is.na(p$outbred), 0, 1)
-# add age in 1944
-p$age <- 1944-p$birthyear
-# kids over 18 by 1944
-p$emancipated_kids <- ifelse(p$last_child_yob>1927 | is.na(p$last_child_yob),0,1)
+p$age_1945 <- 1945-p$birthyear
+# deleted retarded rows
+# p <- p %>% filter (age_at_first_birth > 12 & age_at_first_birth < 51 | is.na(age_at_first_birth))
+
+
 p <- p %>% filter (sex==0)
-# filter age at first birth between 13 and 50 - i.e. get rid of rows with impossible values
-p <- p %>% filter (age_at_first_birth > 12 & age_at_first_birth < 51 | is.na(age_at_first_birth))
+p <- p %>% filter (age_at_first_birth > 12 & age_at_first_birth < 51 | is.na(age_at_first_birth))#80708
 
-# Women who married before 1945 or never married - exclude all the ones who got married after 1940
-p <- p %>% filter (weddingyear<1940 |  never_married==1 | first_child_yob<1940 )
-p <- p %>% filter (age>18)
-# select complete cases for models
-p <- p %>% select("lotta","age","sons","daughters","agriculture","returnedkarelia","outbred2",
-                  "education","servedduringwar_husband","injuredinwar_husband","never_married")
+# get all childless women in 1940 and those who never gave birth 
+#(adding kids =0 make this analysis more conservative)
+#p <- p %>% filter (first_child_yob>1944 | ( is.na(first_child_yob) & kids==0 ))#44041
+#p <- p %>% filter (first_child_yob>1944 )#29533
+p <- p %>% filter (first_child_yob>1944 | weddingyear>1944 )#35110
+# filter age at first birth between 13 and 50 - i.e. get rid of rows with impossible values -deletes
+# 281 women from full data
 
+p <- p %>% select ("id","lotta","birthyear","agriculture","education","martta","never_married")
+p <- p[complete.cases(p), ]
+
+# load children data
+
+children1 <- children %>% select ("id","birthYear","primaryParentId")
+children2 <- children %>% select ("id","birthYear","spouseParentId")
+colnames(children1)[3] <- "parentid"
+colnames(children2)[3] <- "parentid"
+# put data in long form
+# 1) stack children so we have all ids
+children<- bind_rows(children1,children2)
+rm(children1, children2)
+
+# link p to children and add column for each kids birth year
+
+# drop rows with na's in the birth year column
+p<- p %>% drop_na(birthyear)
+
+p$birth_plus_13 <- p$birthyear+13
+p$lastapp <- ifelse (p$birthyear<1925, p$birthyear+45,1970)
+
+## now make cut off when you want (e.g. age 50 or ages 13-50)
+p$year <- mapply(seq, p$birth_plus_13, p$lastapp, SIMPLIFY = FALSE) 
+#Creates a 
+#sequence for each row,
+#so if birth year is 1850 and death year 1900, the cell says 1850:1900.
+#Simplify makes a matrix, but we want to keep a dataframe
+
+#unnest creates a new row for each different value within a "cell" - 
+#this is taken from the 'year' column created above
+p_long <- unnest(p, year)
+
+# Now all women are censored either at age 45 or at the year of their interview
+
+#  NEXT link their kids year of birth to their 'year' by id=parentid
+children <- children %>% select ("birthYear","parentid")
+children$id <- 1
+children<- children %>% drop_na(birthYear)
+children<- children %>% drop_na(parentid)
+twins <- p_long %>% left_join (children, by=c("id"="parentid","year"="birthYear"))
+colnames(twins)[11] <- "reproduced"
+twins$reproduced[is.na(twins$reproduced)] <- 0
+
+twins$war_year <- ifelse(twins$year>1938 & twins$year<1946 , 1,0)
+twins$age <- twins$year-twins$birthyear
+
+
+
+# select data frame columns
+twins <- twins %>% select ("id","lotta","education","agriculture","martta","never_married","year",
+                           "reproduced","war_year","age")
+# find duplicate data
+#dupes<-children[which(duplicated(children[,c('parentid','birthYear')])==T),]
+
+# make p_long_3 no duplicates for year and id
+no_twins <- twins[!duplicated(twins[,c("id","year")]),]
+
+
+# so no_twins is no multiple births in same year, and twins includes them
+no_twins$age2 <- no_twins$age-13
+no_twins$age_sq <- no_twins$age2*no_twins$age2
+
+###############RUN in  rethinking##############################################
+p<- no_twins
 p<- p[complete.cases(p),]
 
-# bayesian analysis
+# dump unnecessary data frames
+rm(no_twins, children, p_long, twins)
+
+print(nrow(p))
+#renumber year to fit as random effect
+p <- p %>% arrange(year)
+p$year_seq <- cumsum(c(1,as.numeric(diff(p$year))!=0))
+#map2stan formula
+
+# run in rethinking
 data_list <- list(
   lotta  = p$lotta,
-  age = p$age,
-  sons = p$sons,
-  daughters = p$daughters,
+  age = p$age2,
+  age_sq = p$age_sq,
   agriculture = p$agriculture,
   education = p$education,
-  returnedkarelia = p$returnedkarelia,
-  outbred = p$outbred2,
-  served = p$servedduringwar_husband,
-  injured = p$injuredinwar_husband,
-  never_married = p$never_married)
+  reproduced= p$reproduced,
+  year_seq=p$year_seq)
 
 model <- map2stan(
   alist(
-    lotta ~ dbinom (1,p),
-    # Here is the model with all the predictors
-    logit(p) <- a +
-      ba*age +
-      bs*sons +
-      bd*daughters +
-      bag*agriculture +
-      bed*education +
-      brk*returnedkarelia +
-      bo*outbred +
-      bserv*served+
-      binj*injured+
-      bnm*never_married,
-    
-    sigma ~ dcauchy(0,1),
-    a ~ dnorm (0,10),
-    # priors for all slopes (b terms) in main model
-    c(ba,bs,bd,bag,bed,brk,bo,bserv,binj,bnm) ~ dnorm(0,1)
+    reproduced ~ dbinom( 1 , p ),
+    logit(p) <- Intercept +
+      b_lotta*lotta +
+      b_age*age +
+      b_age_sq*age_sq +
+      b_education*education +
+      b_agriculture*agriculture +
+      b_lotta_X_age*lotta*age +
+      b_lotta_X_age_sq*lotta*age_sq +
+      v_Intercept[year_seq],
+    Intercept ~ dnorm(0,10),
+    b_lotta ~ dnorm(0,10),
+    b_age ~ dnorm(0,10),
+    b_age_sq ~ dnorm(0,10),
+    b_education ~ dnorm(0,10),
+    b_agriculture ~ dnorm(0,10),
+    b_lotta_X_age ~ dnorm(0,10),
+    b_lotta_X_age_sq ~ dnorm(0,10),
+    v_Intercept[year_seq] ~ dnorm(0,sigma_year),
+    sigma_year ~ dcauchy(0,2)
   ),
   data=data_list, iter=8000, warmup=2000, control=list(max_treedepth=20),
-  start=list(ba=0,bs=0,bd=0,bag=0,bed=0,bo=0,brk=0,bserv=0,binj=0,bnm=0), chains =4, cores=4)
+  start=list(b_lotta=0,b_age=0, b_education=0,b_agriculture=0,b_martta=0, b_lotta_X_age=0,
+             b_lotta_X_age_sq=0),
+  chains =4, cores=4)
 
 path<- (paste0("results/"))
-filename <- "lottas_married_or_had kids before_1940_or never married_2.rds"
+filename <- "lottas_LRS_age_and_age_sq.rds"
 
 saveRDS(model, paste0(path, filename))

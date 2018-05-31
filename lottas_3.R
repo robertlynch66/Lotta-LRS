@@ -3,7 +3,6 @@ file2<- "person_data.rds"
 p <- readRDS(paste0(path, file2))
 library(dplyr)
 library(tidyr)
-library(lme4)
 library(rethinking)
 # convert booleans to numeric
 p$martta<- as.numeric(p$martta)
@@ -98,34 +97,60 @@ no_twins <- twins[!duplicated(twins[,c("id","year")]),]
 
 
 # so no_twins is no multiple births in same year, and twins includes them
-
+no_twins$age2 <- no_twins$age-13
+no_twins$age_sq <- no_twins$age2*no_twins$age2
 # run time series analysis in glmer
-model <-glmer(reproduced ~ lotta*age + education + agriculture + martta +
+model <-glmer(reproduced ~ lotta*age2 + lotta*age_sq+ education + agriculture + 
                 (1|year), data = no_twins, family = binomial, 
         control = glmerControl(optimizer="nloptwrap", optCtrl=list(maxfun=100000)))
-# compare AIC scores between models droppin a variable
+# compare AIC scores between models dropping a variable
 m1 <- drop1(model)
 
 summary(model)
 
-# turn the formula into a map formula with glimmer
+###############RUN in  rethinking
 
-data(cars)
-glimmer(reproduced ~ lotta + education + agriculture + martta + age + age*lotta +
-          (1|year) +(1|id), data = twins, family = binomial)
-
-
-model <- map2stan(alist(
-  dist ~ dnorm( mu , sigma ),
-  mu <- Intercept +
-    b_speed*speed,
-  Intercept ~ dnorm(0,10),
-  b_speed ~ dnorm(0,10),
-  sigma ~ dcauchy(0,2)
-),data=cars)
-  
-#time series example in map2stan
-intestinal_resistance ~ N( mu,sigma )
-mu= f(time,antibiotics,patient )
+p<- no_twins
+#renumber year to fit as random effect
+p <- p %>% arrange(year)
+p$year_seq <- cumsum(c(1,as.numeric(diff(p$year))!=0))
+#map2stan formula
 
 # run in rethinking
+data_list <- list(
+  lotta  = p$lotta,
+  age = p$age2,
+  agriculture = p$agriculture,
+  education = p$education,
+  reproduced= p$reproduced)
+
+model <- map2stan(
+  alist(
+    reproduced ~ dbinom( 1 , p ),
+    logit(p) <- Intercept +
+      b_lotta*lotta +
+      b_age*age +
+      b_age_sq*age^2 +
+      b_education*education +
+      b_agriculture*agriculture +
+      b_lotta_X_age*lotta_X_age +
+      b_lotta_X_age_sq*age^2 +
+      v_Intercept[year],
+    Intercept ~ dnorm(0,10),
+    b_lotta ~ dnorm(0,10),
+    b_age ~ dnorm(0,10),
+    b_education ~ dnorm(0,10),
+    b_agriculture ~ dnorm(0,10),
+    b_martta ~ dnorm(0,10),
+    b_lotta_X_age ~ dnorm(0,10),
+    v_Intercept[year] ~ dnorm(0,sigma_year),
+    sigma_year ~ dcauchy(0,2)
+  ),
+  data=data_list, iter=8000, warmup=2000, control=list(max_treedepth=20),
+  start=list(b_lotta=0,b_age=0, b_education=0,b_agriculture=0,b_martta=0, b_lotta_X_age=0),
+  chains =4, cores=4)
+
+path<- (paste0("results/"))
+filename <- "lottas_LRS_age_and_age_sq.rds"
+
+saveRDS(model, paste0(path, filename))
