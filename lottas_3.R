@@ -127,3 +127,5 @@ model <- map2stan(alist(
 #time series example in map2stan
 intestinal_resistance ~ N( mu,sigma )
 mu= f(time,antibiotics,patient )
+
+# run in rethinking
