@@ -1,9 +1,12 @@
 path <- "C:/Users/rofrly/Dropbox/Working papers/R data files/"
+path<-"/home/robert/Dropbox/Working papers/R data files/"
 file2<- "person_data.rds"
 p <- readRDS(paste0(path, file2))
 library(dplyr)
 library(tidyr)
 library(rethinking)
+library(lme4)
+library(plyr)
 # convert booleans to numeric
 p$martta<- as.numeric(p$martta)
 p$lotta<- as.numeric(p$lotta)
@@ -20,13 +23,23 @@ p <- p %>% filter (age_at_first_birth > 12 & age_at_first_birth < 51 | is.na(age
 #(adding kids =0 make this analysis more conservative)
    #p <- p %>% filter (first_child_yob>1944 | ( is.na(first_child_yob) & kids==0 ))#44041
    #p <- p %>% filter (first_child_yob>1944 )#29533
-p <- p %>% filter (first_child_yob>1944 )#35110
+p <- p %>% filter (first_child_yob>1944 & age_1945>12 )#35110
 # filter age at first birth between 13 and 50 - i.e. get rid of rows with impossible values -deletes
 # 281 women from full data
 
-p <- p %>% select ("id","lotta","birthyear","agriculture","education","martta","never_married","age_1945")
+p <- p %>% select ("id","lotta","birthyear","agriculture","education",
+                   "age_at_first_birth","never_married","age_1945")
 p <- p[complete.cases(p), ]
 
+p$age <- p$age_1945-min(p$age_1945) 
+p$age_sq <- p$age*p$age
+### try using age at first birth as DV
+model <-glm(age_at_first_birth ~ lotta*age + lotta*age_sq+ education + agriculture,
+              data = p, family = poisson)
+# compare AIC scores between models dropping a variable
+m1 <- drop1(model)
+
+summary(model)
 # load children data
 children <- readRDS("C:/Users/rofrly/Dropbox/Github/Lottas_2/children.rds")
 children1 <- children %>% select ("id","birthYear","primaryParentId")
@@ -394,3 +407,38 @@ plot45 <- ggplot(data = m45, aes(x=age, y=mean, colour=lotta, group=lotta)) +
   scale_color_manual(values=c("darkblue", "darkgreen")) + 
   labs(x = "Age gave birth", y="mean reproduction", title="Over 40 years old in 1945")
 plot45
+
+## plotting age at first birth
+pd <- position_dodge(0.3)
+p<- p %>% filter (age_1945>13 &age_1945<40)
+aafb<- ddply(p, c("lotta", "age_1945"), summarise,
+             N    = length(age_at_first_birth),
+             mean = mean(age_at_first_birth),
+             sd   = sd(age_at_first_birth),
+             se   = sd / sqrt(N)
+)
+# make lotta a factor
+aafb$lotta <- as.factor(aafb$lotta)
+# make a point plot with colors and 
+plot_aafb <- ggplot(data = aafb, aes(x=age_1945, y=mean, colour=lotta, group=lotta)) +
+  geom_point(position=pd, size=1) +
+  geom_errorbar(aes(ymin=mean-se, ymax=mean+se), colour="black", width=.1, position=pd)+
+  scale_color_manual(values=c("darkblue", "darkgreen")) + 
+  labs(x = "Age in 1945", y="Mean age at first birth", title="Age at first birth across ages")
+plot_aafb
+
+
+
+# try to add a predicted quadratic line to the above plot
+model <-glm(age_at_first_birth ~ lotta*age + lotta*age_sq+ education + agriculture,
+            data = p, family = poisson)
+
+agevalues <- seq(0, 25, 1)
+predictedcounts <- predict(model,list(age=agevalues, age_sq=agevalues^2, lotta=1,
+                                      education=0,agriculture=0))
+
+plot(Time, Counts, pch=16, xlab = "Time (s)", ylab = "Counts", cex.lab = 1.3, col = "blue")
+
+lines(timevalues, predictedcounts, col = "darkgreen", lwd = 3)
+pl <- p %>% filter (lotta==1)
+pn <- p %>% filter (lotta==0)
