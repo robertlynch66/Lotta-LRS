@@ -28,7 +28,7 @@ p <- p %>% filter (first_child_yob>1944 & age_1945>12 )#35110
 # 281 women from full data
 
 p <- p %>% select ("id","lotta","birthyear","agriculture","education",
-                   "age_at_first_birth","never_married","age_1945")
+                   "age_at_first_birth","age_1945")
 p <- p[complete.cases(p), ]
 
 p$age <- p$age_1945-min(p$age_1945) 
@@ -42,6 +42,7 @@ m1 <- drop1(model)
 summary(model)
 # load children data
 children <- readRDS("C:/Users/rofrly/Dropbox/Github/Lottas_2/children.rds")
+children <- readRDS("/home/robert/Dropbox/Github/Lottas_2/children.rds")
 children1 <- children %>% select ("id","birthYear","primaryParentId")
 children2 <- children %>% select ("id","birthYear","spouseParentId")
 colnames(children1)[3] <- "parentid"
@@ -91,7 +92,7 @@ children$id <- 1
 children<- children %>% drop_na(birthYear)
 children<- children %>% drop_na(parentid)
 twins <- p_long %>% left_join (children, by=c("id"="parentid","year"="birthYear"))
-colnames(twins)[12] <- "reproduced"
+colnames(twins)[11] <- "reproduced"
 twins$reproduced[is.na(twins$reproduced)] <- 0
 
 twins$war_year <- ifelse(twins$year>1938 & twins$year<1946 , 1,0)
@@ -100,21 +101,35 @@ twins$age <- twins$year-twins$birthyear
 
 
 # select data frame columns
-twins <- twins %>% select ("id","lotta","education","agriculture","martta","never_married","year",
-                           "reproduced","war_year","age","age_1945")
+twins <- twins %>% select ("id","lotta","education","agriculture","year",
+                           "reproduced","age","age_1945","age_at_first_birth")
 # find duplicate data
 #dupes<-children[which(duplicated(children[,c('parentid','birthYear')])==T),]
 
 # make p_long_3 no duplicates for year and id
 no_twins <- twins[!duplicated(twins[,c("id","year")]),]
 
+## now choose the lowest year within each id category that has the first year where
+# reproduce = 1
 
+# this makes a years to reproduction after 1944 variable- basically this is the time 
+# that women waited after the war to have a kid
+firstyearreproduced <- no_twins %>% arrange(id) %>% group_by (id) %>%
+  filter (reproduced==1 & year>1944) %>% mutate (time_to_repro=age-age_1945)
+
+# now get only the time to the first repro event                                  
+fyrepproduced2 <- firstyearreproduced  %>% group_by (id) %>%
+   slice(which.min(time_to_repro))
+
+model <-glm(time_to_repro ~ lotta*age_1945+ education + agriculture,  
+            data = fyrepproduced2, family = poisson) 
+summary(model)
 # so no_twins is no multiple births in same year, and twins includes them
 no_twins$age2 <- no_twins$age-13
 no_twins$age_sq <- no_twins$age2*no_twins$age2
 # run time series analysis in glmer
-model <-glmer(reproduced ~ lotta*age2 + lotta*age_sq+ education + agriculture + 
-                (1|year), data = no_twins, family = binomial, 
+model <-glm(time_to_repro ~ lotta+  education + agriculture,  
+                data = firstyearreproduced, family = poisson  , 
         control = glmerControl(optimizer="nloptwrap", optCtrl=list(maxfun=100000)))
 # compare AIC scores between models dropping a variable
 m1 <- drop1(model)
