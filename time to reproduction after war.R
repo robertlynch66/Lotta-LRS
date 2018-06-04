@@ -1,12 +1,7 @@
-# Lottas childless before war model
-library(dplyr)
-library(rethinking)
-library(tidyr)
-# path to the folder with the R data files
-path<- (paste0("~/r_files/"))
-# read in person table
-file<- "person_data.rds"
-p <- readRDS(paste0(path, file))
+path <- "C:/Users/rofrly/Dropbox/Working papers/R data files/"
+path<-"/home/robert/Dropbox/Working papers/R data files/"
+file2<- "person_data.rds"
+p <- readRDS(paste0(path, file2))
 library(dplyr)
 library(tidyr)
 library(rethinking)
@@ -25,11 +20,13 @@ p$birth_cat <- ifelse(p$first_child_yob<1944, 0, 1)
 
 
 p <- p %>% select ("id","lotta","birthyear","agriculture","education",
-                   "age_at_first_birth","age_1945","birth_cat","kids")
+"age_at_first_birth","age_1945","birth_cat","kids")
 p <- p[complete.cases(p), ] # 48436
 # 22878 started before war ends and 25558 started having kids after 1944 
-file<- "children.rds"
-children <- readRDS(paste0(path, file))
+
+# load children data
+children <- readRDS("C:/Users/rofrly/Dropbox/Github/Lottas_2/children.rds")
+children <- readRDS("/home/robert/Dropbox/Github/Lottas_2/children.rds")
 children1 <- children %>% select ("id","birthYear","primaryParentId")
 children2 <- children %>% select ("id","birthYear","spouseParentId")
 colnames(children1)[3] <- "parentid"
@@ -105,45 +102,20 @@ birthrate$post_war_repro_rate <- birthrate$maximum/birthrate$kids_after_war
 birthrate$kids_before_war <- birthrate$kids-birthrate$kids_after_war
 # remove duplicate ids for this data frame
 birthrate <- birthrate[!duplicated(birthrate[,c("id")]),]
+###  limit ages to 17 to 40 after the war #27490 obs
 birthrate$age_sq <- birthrate$age_1945*birthrate$age_1945
 birthrate <- birthrate[which(birthrate$age_1945>12 & birthrate$age_1945<46),]
 birthrate$age_1945 <- birthrate$age_1945-min(birthrate$age_1945)
-p<-birthrate
+model1 <-glm(kids_after_war ~  lotta*age_1945+ birth_cat+education + agriculture,  
+            data = birthrate, family = poisson) 
+summary(model1)
+m1 <- drop1(model1)
+m1
 
 
+model2 <-glm(time_to_repro ~ lotta*age_1945+birth_cat+ education + agriculture,  
+            data = birthrate, family = poisson) 
+summary(model2)
+m1 <- drop1(model2)
+m1
 
-#map2stan formula
-# run in rethinking
-data_list <- list(
-  time_to_repro = p$time_to_repro,
-  lotta  = p$lotta,
-  birth_cat = p$birth_cat,
-  age = p$age_1945,
-  agriculture = p$agriculture,
-  education = p$education)
-
-model <- map2stan(
-  alist(
-    time_to_repro ~ dpois(lambda),
-    log(lambda) <- Intercept +
-      b_lotta*lotta +
-      b_age*age +
-      b_birth_cat*birth_cat +
-      b_education*education +
-      b_agriculture*agriculture +
-      b_lotta_X_age*lotta*age,
-    Intercept ~ dnorm(0,10),
-    b_lotta ~ dnorm(0,1),
-    b_age ~ dnorm(0,1),
-    b_education ~ dnorm(0,1),
-    b_birth_cat ~ dnorm(0,1),
-    b_agriculture ~ dnorm(0,1),
-    b_lotta_X_age ~ dnorm(0,1)
-  ),
-  data=data_list, iter=8000, warmup=2000, control=list(max_treedepth=20),
-  chains =4, cores=4)
-
-path<- (paste0("results/"))
-filename <- "Time_to_repro_lottas_X_age.rds"
-
-saveRDS(model, paste0(path, filename))
