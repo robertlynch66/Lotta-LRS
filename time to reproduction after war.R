@@ -1,7 +1,10 @@
 path <- "C:/Users/rofrly/Dropbox/Working papers/R data files/"
-path<-"/home/robert/Dropbox/Working papers/R data files/"
+#path<-"/home/robert/Dropbox/Working papers/R data files/"
 file2<- "person_data.rds"
 p <- readRDS(paste0(path, file2))
+# load children data
+children <- readRDS("C:/Users/rofrly/Dropbox/Github/Lottas_2/children.rds")
+#children <- readRDS("/home/robert/Dropbox/Github/Lottas_2/children.rds")
 library(dplyr)
 library(tidyr)
 library(rethinking)
@@ -20,13 +23,13 @@ p$birth_cat <- ifelse(p$first_child_yob<1944, 0, 1)
 
 
 p <- p %>% select ("id","lotta","birthyear","agriculture","education",
-"age_at_first_birth","age_1945","birth_cat","kids")
+"age_at_first_birth","age_1945","birth_cat","kids","professionid","birthplaceid")
 p <- p[complete.cases(p), ] # 48436
 # 22878 started before war ends and 25558 started having kids after 1944 
 
-# load children data
-children <- readRDS("C:/Users/rofrly/Dropbox/Github/Lottas_2/children.rds")
-children <- readRDS("/home/robert/Dropbox/Github/Lottas_2/children.rds")
+
+
+
 children1 <- children %>% select ("id","birthYear","primaryParentId")
 children2 <- children %>% select ("id","birthYear","spouseParentId")
 colnames(children1)[3] <- "parentid"
@@ -64,15 +67,15 @@ children$id <- 1
 children<- children %>% drop_na(birthYear)
 children<- children %>% drop_na(parentid)
 twins <- p_long %>% left_join (children, by=c("id"="parentid","year"="birthYear"))
-colnames(twins)[13] <- "reproduced"
+colnames(twins)[15] <- "reproduced"
 twins$reproduced[is.na(twins$reproduced)] <- 0
 
 
 twins$age <- twins$year-twins$birthyear
-
+rm(p_long)
 # select data frame columns
 twins <- twins %>% select ("id","lotta","education","agriculture","year",
-                           "reproduced","age","age_1945","age_at_first_birth","birth_cat","kids")
+                           "reproduced","age","age_1945","age_at_first_birth","birth_cat","kids","professionid","birthplaceid")
 # find duplicate data
 #dupes<-children[which(duplicated(children[,c('parentid','birthYear')])==T),]
 
@@ -85,10 +88,17 @@ no_twins <- twins[!duplicated(twins[,c("id","year")]),]
 
 # this makes a years to reproduction after 1944 variable- basically this is the time 
 # that women waited after the war to have a kid
-# 
+
+# add a gave birth in 1943 or 1944 dummy variable
+dummy <- twins  %>% arrange(id) %>% group_by (id) %>%
+  filter (reproduced==1 & year > 1942 & year<1945) %>% mutate (repro_within_2_years=1)
+dummy <- dummy[!duplicated(dummy[,c("id")]),]
+dummy <- dummy %>% select ("id","repro_within_2_years")
+
 # # make a birth rate category
 birthrate <- twins %>% arrange(id) %>% group_by (id) %>%
-  filter (reproduced==1 & year>1944) %>% mutate (time_to_repro=age-age_1945)
+  filter (reproduced==1 & year>1944) %>% mutate (time_to_repro=age-age_1945) 
+
 
 birthrate_2 <- birthrate  %>% group_by (id) %>%
   dplyr::summarise(maximum= max(time_to_repro))
@@ -97,6 +107,11 @@ birthrate_2 <- birthrate  %>% group_by (id) %>%
   dplyr::summarise(kids_after_war= n())
 birthrate <- birthrate %>% left_join (birthrate_2, by="id")
 rm(birthrate_2)
+# jouin reproduced within past 2 years to main table
+birthrate <- birthrate %>% left_join (dummy, by="id")
+
+rm(dummy)
+birthrate$repro_within_2_years[is.na(birthrate$repro_within_2_years)] <- 0
 
 birthrate$post_war_repro_rate <- birthrate$maximum/birthrate$kids_after_war
 birthrate$kids_before_war <- birthrate$kids-birthrate$kids_after_war
@@ -104,18 +119,39 @@ birthrate$kids_before_war <- birthrate$kids-birthrate$kids_after_war
 birthrate <- birthrate[!duplicated(birthrate[,c("id")]),]
 ###  limit ages to 17 to 40 after the war #27490 obs
 birthrate$age_sq <- birthrate$age_1945*birthrate$age_1945
-birthrate <- birthrate[which(birthrate$age_1945>12 & birthrate$age_1945<46),]
+birthrate <- birthrate[which(birthrate$age_1945>12 & birthrate$age_1945<46),] #32045
+
+#rescale age_1945
 birthrate$age_1945 <- birthrate$age_1945-min(birthrate$age_1945)
-model1 <-glm(kids_after_war ~  lotta*age_1945+ birth_cat+education + agriculture,  
+
+# Models
+model1 <-glm(kids_after_war ~  lotta*age_1945+ birth_cat+education + agriculture+repro_within_2_years,  
             data = birthrate, family = poisson) 
 summary(model1)
 m1 <- drop1(model1)
 m1
 
 
-model2 <-glm(time_to_repro ~ lotta*age_1945+birth_cat+ education + agriculture,  
+model2 <-glm(time_to_repro ~ lotta*age_1945+birth_cat+ education + agriculture+repro_within_2_years,  
             data = birthrate, family = poisson) 
 summary(model2)
 m1 <- drop1(model2)
 m1
 
+# with random effects
+library(lme4)
+
+model3 <-glmer(kids_after_war ~  lotta*age_1945+ birth_cat+education + agriculture+repro_within_2_years+
+                 (1|professionid),  
+               data = birthrate, family = "poisson",  
+control = glmerControl(optimizer="nloptwrap", optCtrl=list(maxfun=100000)))
+summary(model3)
+m1 <- drop1(model3)
+m1
+model4 <-glmer(time_to_repro ~  lotta*age_1945+ birth_cat+education + agriculture+repro_within_2_years+
+                 (1|birthplaceid),  
+               data = birthrate, family = "poisson",  
+               control = glmerControl(optimizer="nloptwrap", optCtrl=list(maxfun=100000)))
+summary(model4)
+m1 <- drop1(model4)
+m1
