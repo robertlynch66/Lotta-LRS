@@ -122,16 +122,6 @@ p <- p%>% arrange(birthplaceid)
 p$birthplaceid_seq <- cumsum(c(1,as.numeric(diff(p$birthplaceid))!=0))
 
 
-
-
-#mk  <- m %>% select(kids,birthplaceid,sex,age,agricult,technical,office,business,
-          #          transport,factory,service,outbred,returnedkarelia,birthyear)
-#print(nrow(m))
-# should be 41155 cases - yes
-#mk <- mk [complete.cases(mk),]
-#mk <- mk %>% arrange(birthplaceid)
-#mk$birthplace_id_seq <- cumsum(c(1,as.numeric(diff(mk$birthplaceid)) !=0))
-
 # load graphics packages
 library(magrittr)
 library(dplyr)
@@ -150,6 +140,9 @@ M1 <- readRDS("C:/Users/rofrly/Dropbox/Github/Lottas_2/model results/Time_to_rep
 M2 <- readRDS("C:/Users/rofrly/Dropbox/Github/Lottas_2/model results/Kids_after_war_mixed_model_noagesq.rds")
 p <- p %>% select (age,lotta,birth_cat,education,agriculture,repro_within_2_years,kids_after_war,time_to_repro,birthplaceid_seq)
 
+# select only ages 17to 45 and nobody who supposedly reproduced after the age of 50
+p$ageatbirth <- p$age + p$time_to_repro
+p <- p %>% filter (ageatbirth<51 & age>16)
 age_seq <- seq (from = 0, to = 1, length.out=32)
 #By default crossing in tidyr package makes a tibble, so you have to convert
 #back to data frame.
@@ -158,6 +151,7 @@ attach(p)
 lotta_time_to_repro <- tidyr::crossing(
   birth_cat = mean(birth_cat), # the "L" makes the value an integer, avoiding possible errors
   age = age_seq,
+  age_sq= age*age,
   lotta = c(0L,1L),
   birthplaceid_seq =1,
   agriculture = mean(agriculture),
@@ -167,11 +161,11 @@ lotta_time_to_repro <- tidyr::crossing(
 detach(p)
 library(tidybayes.rethinking)
 
-p_both <- tidy_link(lotta_time_to_repro, M1) %>% as.data.frame()
+p_both <- tidy_link(lotta_time_to_repro, Big) %>% as.data.frame()
 
 # put ages back on number scale
 p_both$age2 <- round((p_both$age*32)+13)
-p_both$age3 <- (p_both$age2-58)*-1
+
 #  Observed vs predicted for lottas time to repro
 library(plotrix)
 # make new dataframe with raw data for time to reproduction
@@ -179,30 +173,32 @@ library(plotrix)
 #mk <- mk %>% filter (age_1939<56)
 non_lotta_df <- p %>% filter(lotta==0) 
 lotta_df <- p %>% filter(lotta==1)
-ndf <- non_lotta_df  %>% mutate (age = cut(age, breaks=c(12,20,24,28,32,36,40,44,48) )) %>% group_by(age) %>% 
+ndf <- non_lotta_df  %>% mutate (age = cut(age, breaks=c(16,20,24,28,32,36,48) )) %>% group_by(age) %>% 
   summarise(mean.time.to.repro = mean(time_to_repro), sd.time.to.repro = sd(time_to_repro),
             se.time.to.repro=std.error(time_to_repro))
-ldf <- lotta_df %>% mutate (age = cut(age,breaks=c(16,20,24,28,32,36,40,44,48) )) %>% group_by(age) %>% 
+ldf <- lotta_df %>% mutate (age = cut(age,breaks=c(16,20,24,28,32,36,48) )) %>% group_by(age) %>% 
   summarise(mean.time.to.repro = mean(time_to_repro), sd.time.to.repro = sd(time_to_repro),
             se.time.to.repro=std.error(time_to_repro))
 newdf <- rbind(ndf,ldf)
+#delete row with NA's - the row with non lottas between 12 and 16 years old
+#newdf <- newdf[-c(7), ]
 #newdf$age<- rep(c(0.21,0.3,0.4,0.5,0.6,0.7),2)
-newdf$lotta2 <- as.integer(c(rep(0,8),rep(1,8)))
-newdf$lotta3 <- as.integer(c(rep(2,8),rep(3,8)))
+newdf$lotta2 <- as.integer(c(rep(0,6),rep(1,6)))
+newdf$lotta3 <- as.integer(c(rep(2,6),rep(3,6)))
 #newdf[12,1:5] <- c(0.7, 2.5, 2.8, 0.09,1)
 #newdf[5,1:5] <- c(0.6, 3.27, 2.8, 0.05,0)
 #newdf[6,1:5] <- c(0.7, 3.5, 3.1, 0.07,0)
-newdf$age2 <- c(18,22,26,30,34,38,42,46,18,22,26,30,34,38,42,46)
+newdf$age2 <- c(18,22,26,30,34,38,18,22,26,30,34,38)
 newdf <- as.data.frame(newdf)
 
 # plot both together   
 
-data <- p_both %>% left_join (newdf, by =c("age3"="age2","lotta"="lotta2"))
+#data <- p_both %>% left_join (newdf, by =c("age2"="age2","lotta"="lotta2"))
 
 
 cols <- c("0" = "black", "1" = "grey", "2" = "black", "3" = "grey")
 plot1 <- ggplot() +
-  stat_lineribbon(data=p_both, aes(x=age3, y=lambda, group=factor(lotta),color=factor(lotta) ),.prob = c(.8 ),
+  stat_lineribbon(data=p_both, aes(x=age2, y=lambda, group=factor(lotta),color=factor(lotta) ),.prob = c(.8 ),
                   show.legend=T) +
   geom_point(data=newdf,position=position_dodge(width=0.01),aes(group=factor(lotta3),colour=factor(lotta3),
                                                                 x = age2, y = mean.time.to.repro)) +
@@ -216,9 +212,9 @@ plot1 <- ggplot() +
   scale_color_manual(name="", breaks=c(0,1,2,3),values=cols,
                      labels=c("Non Lotta (predicted)", "Lotta (predicted)","Non Lotta (observed) +/- SE",
                               "Lotta (observed) +/- SE")) +
-  scale_x_continuous(name="Age in 1944",limits=c(12,45),breaks=c(14,18,22,26,30,34,38,42),
-                     labels=c("14","18", "22", "26", "30", "34","38","42"))  +
-  scale_y_continuous(name="Time to reproduction (years)",breaks=c(2.5,5,7.5),limits=c(1.0,8.0),
+  scale_x_continuous(name="Age in 1944",limits=c(16,40),breaks=c(18,22,26,30,34,38),
+                     labels=c("16-20", "21-24", "25-28", "29-32", "33-36","Over 36"))  +
+  scale_y_continuous(name="Time to reproduction (years)",breaks=c(2.5,5,7.5),limits=c(0,6.0),
                      labels=c("2.5","5","7.5")) +
   #scale_fill_discrete(guide=guide_legend(title="V"))+
   #xlab("Age in 1939") + ylab("Number of Children") + 
@@ -260,11 +256,11 @@ lotta_kids_after_war <- tidyr::crossing(
 detach(p)
 library(tidybayes.rethinking)
 
-p_both2 <- tidy_link(lotta_kids_after_war, M2) %>% as.data.frame()
+p_both2 <- tidy_link(lotta_kids_after_war, Kids_after_war_new) %>% as.data.frame()
 
 # put ages back on number scale
-p_both2$age2 <- round((p_both$age*32)+13)
-p_both2$age3 <- (p_both2$age2-58)*-1
+p_both2$age2 <- round((p_both2$age*32)+13)
+
 #  Observed vs predicted for lottas time to repro
 library(plotrix)
 # make new dataframe with raw data for time to reproduction
@@ -272,25 +268,25 @@ library(plotrix)
 #mk <- mk %>% filter (age_1939<56)
 non_lotta_df2 <- p %>% filter(lotta==0) 
 lotta_df2 <- p %>% filter(lotta==1)
-ndf2 <- non_lotta_df2  %>% mutate (age = cut(age, breaks=c(12,20,24,28,32,36,40,44,48) )) %>% group_by(age) %>% 
+ndf2 <- non_lotta_df2  %>% mutate (age = cut(age, breaks=c(16,20,24,28,32,36,48) )) %>% group_by(age) %>% 
   summarise(mean_kids_after_war = mean(kids_after_war), sd_kids_after_war = sd(kids_after_war),
             se_kids_after_war=std.error(kids_after_war))
-ldf2 <- lotta_df2 %>% mutate (age = cut(age,breaks=c(16,20,24,28,32,36,40,44,48) )) %>% group_by(age) %>% 
+ldf2 <- lotta_df2 %>% mutate (age = cut(age,breaks=c(16,20,24,28,32,36,48) )) %>% group_by(age) %>% 
   summarise(mean_kids_after_war = mean(kids_after_war), sd_kids_after_war = sd(kids_after_war),
             se_kids_after_war=std.error(kids_after_war))
 newdf2 <- rbind(ndf2,ldf2)
 #newdf$age<- rep(c(0.21,0.3,0.4,0.5,0.6,0.7),2)
-newdf2$lotta2 <- as.integer(c(rep(0,8),rep(1,8)))
-newdf2$lotta3 <- as.integer(c(rep(2,8),rep(3,8)))
+newdf2$lotta2 <- as.integer(c(rep(0,6),rep(1,6)))
+newdf2$lotta3 <- as.integer(c(rep(2,6),rep(3,6)))
 #newdf[12,1:5] <- c(0.7, 2.5, 2.8, 0.09,1)
 #newdf[5,1:5] <- c(0.6, 3.27, 2.8, 0.05,0)
 #newdf[6,1:5] <- c(0.7, 3.5, 3.1, 0.07,0)
-newdf2$age2 <- c(18,22,26,30,34,38,42,46,18,22,26,30,34,38,42,46)
+newdf2$age2 <- c(18,22,26,30,34,38,18,22,26,30,34,38)
 newdf2 <- as.data.frame(newdf2)
 
 # plot both together   
 
-data2 <- p_both2 %>% left_join (newdf2, by =c("age2"="age2","lotta"="lotta2"))
+#data2 <- p_both2 %>% left_join (newdf2, by =c("age2"="age2","lotta"="lotta2"))
 
 
 cols <- c("0" = "black", "1" = "grey", "2" = "black", "3" = "grey")
@@ -309,8 +305,8 @@ plot2 <- ggplot() +
   scale_color_manual(name="", breaks=c(0,1,2,3),values=cols,
                      labels=c("Non Lotta (predicted)", "Lotta (predicted)","Non Lotta (observed) +/- SE",
                               "Lotta (observed) +/- SE")) +
-  scale_x_continuous(name="Age in 1944",limits=c(12,45),breaks=c(14,18,22,26,30,34,38,42),
-                     labels=c("14","18", "22", "26", "30", "34","38","42"))  +
+  scale_x_continuous(name="Age in 1944",limits=c(16,40),breaks=c(18,22,26,30,34,38),
+                     labels=c("16-20","21-24", "25-28", "29-32", "33-36", "Over 36"))  +
   scale_y_continuous(name="Total births after war",breaks=c(1.5,2.5,3.5),limits=c(1.0,4.0),
                      labels=c("1.5","2.5","3.5")) +
   #scale_fill_discrete(guide=guide_legend(title="V"))+

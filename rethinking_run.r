@@ -4,7 +4,6 @@ library(rethinking)
 library(tidyr)
 
 
-
 # path to the folder with the R data files
 path<- (paste0("~/r_files/"))
 # read in person table
@@ -126,9 +125,11 @@ p$birthplaceid_seq <- cumsum(c(1,as.numeric(diff(p$birthplaceid))!=0))
 
 # rescale some predictors
 
-#set.seed(42)
-#m <- m[sample(nrow(m),200),]
-#p <- p[1:500,]
+# get rid of women who are seen to have kids after the age of 50
+p$ageatbirth <- p$age + p$time_to_repro
+p <- p %>% filter (ageatbirth<51 & age>16)
+
+# we should have 30691 individuals who are bewteen the ages of 17 and 45
 
 #map2stan formula
 # run in rethinking
@@ -138,7 +139,6 @@ data_list <- list(
   lotta  = p$lotta,
   birth_cat = p$birth_cat,
   age = p$age_1945,
-  age_sq = p$age_sq,
   agriculture = p$agriculture,
   repro_within_2_years = p$repro_within_2_years,
   education = p$education,
@@ -152,13 +152,11 @@ model <- map2stan(
       a_birthplaceid[birthplaceid_seq] +
       b_lotta*lotta +
       b_age*age +
-      b_age_sq*age_sq +
       b_birth_cat*birth_cat +
       b_education*education +
       b_agriculture*agriculture +
       b_repro_within_2_years*repro_within_2_years +
-      b_lotta_X_age*lotta*age +
-      b_lotta_X_age_sq*lotta*age_sq,
+      b_lotta_X_age*lotta*age,
     
    a_birthplaceid[birthplaceid_seq] ~ dnorm (0, sigma),
    sigma ~ dcauchy (0,1),
@@ -170,18 +168,16 @@ model <- map2stan(
     b_birth_cat ~ dnorm(0,1),
     b_agriculture ~ dnorm(0,1),
     b_repro_within_2_years ~ dnorm(0,1),
-    b_lotta_X_age ~ dnorm(0,1),
-    b_lotta_X_age_sq ~ dnorm(0,1)
+    b_lotta_X_age ~ dnorm(0,1)
   ),
   data=data_list, iter=8000, warmup=2000, control=list(max_treedepth=20),
   chains =1, cores=1,start=list(Intercept=mean(p$time_to_repro),b_age=0,
                                  b_age_sq=0,b_birth_cat=0,b_education=0,
                                  b_agriculture=0,b_repro_within_2_years=0,
-                                 b_lotta_X_age=0,
-                                 b_lotta_X_age_sq=0))
+                                 b_lotta_X_age=0))
 
 path<- (paste0("results/"))
-filename <- "Time_to_repro_mixed_model.rds"
+filename <- "Time_to_repro_new.rds"
 
 saveRDS(model, paste0(path, filename))
 
