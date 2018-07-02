@@ -4,12 +4,12 @@ library(tidybayes)
 library(bayesplot)
 library(tidybayes.rethinking)
 library(data.table)
-
+library(tidyr)
 # read in the dataused to create the model map2 stan object and the model
 # read in person tabel and children table
 p <- readRDS("C:/Users/rofrly/Dropbox/Github/Lottas_2/person_data.rds")
 children <- readRDS("C:/Users/rofrly/Dropbox/Github/Lottas_2/children.rds")
-
+children <- readRDS("~/Dropbox/Github/Lottas_2/children.rds")
 p <- p %>% filter (sex==0)
 p <- p %>% filter (birthyear < 1940 & age_at_first_birth > 12 & age_at_first_birth < 51 | is.na(age_at_first_birth))#80708
 p<- p %>% drop_na(first_child_yob) # 60129
@@ -93,9 +93,20 @@ dummy <- dummy %>% select ("id","repro_within_2_years")
 birthrate <- twins %>% arrange(id) %>% group_by (id) %>%
   filter (reproduced==1 & year>1944) %>% mutate (time_to_repro=age-age_1945)
 
+
+
 birthrate_2 <- birthrate  %>% group_by (id) %>%
-  dplyr::summarise(maximum= max(time_to_repro))
+  dplyr::summarise(maximum= max(time_to_repro)) 
+
+birthrate_3 <- birthrate %>% group_by (id) %>%
+  dplyr::summarise(minimum = min(time_to_repro))
+
+
+
+
 birthrate <- birthrate %>% left_join (birthrate_2, by="id")
+birthrate <- birthrate %>% left_join (birthrate_3, by="id")
+
 birthrate_2 <- birthrate  %>% group_by (id) %>%
   dplyr::summarise(kids_after_war= n())
 birthrate <- birthrate %>% left_join (birthrate_2, by="id")
@@ -121,7 +132,10 @@ p<-birthrate %>% as.data.frame()  #31613
 p <- p%>% arrange(birthplaceid)
 p$birthplaceid_seq <- cumsum(c(1,as.numeric(diff(p$birthplaceid))!=0))
 
-
+rm(dummy)
+rm(twins)
+rm(p_long)
+rm(birthrate)
 # load graphics packages
 library(magrittr)
 library(dplyr)
@@ -135,7 +149,9 @@ library(brms)
 library(modelr)
 library(forcats)
 #using tidy bayes
-#residual_kids <- readRDS("C:/Users/rofrly/Dropbox/model results/residual_kids.rds")
+
+M1 <- readRDS("/home/robert/Dropbox/Github/Lottas_2/model results/Kids_after_war_new.rds")
+M2 <- readRDS("/home/robert/Dropbox/Github/Lottas_2/model results/Time_to_repro_mixed_model_noagesq.rds")
 M1 <- readRDS("C:/Users/rofrly/Dropbox/Github/Lottas_2/model results/Time_to_repro_mixed_model_noagesq.rds")
 M2 <- readRDS("C:/Users/rofrly/Dropbox/Github/Lottas_2/model results/Kids_after_war_mixed_model_noagesq.rds")
 p <- p %>% select (age,lotta,birth_cat,education,agriculture,repro_within_2_years,kids_after_war,time_to_repro,birthplaceid_seq)
@@ -151,7 +167,7 @@ attach(p)
 lotta_time_to_repro <- tidyr::crossing(
   birth_cat = mean(birth_cat), # the "L" makes the value an integer, avoiding possible errors
   age = age_seq,
-  age_sq= age*age,
+  #age_sq= age*age,
   lotta = c(0L,1L),
   birthplaceid_seq =1,
   agriculture = mean(agriculture),
@@ -161,11 +177,11 @@ lotta_time_to_repro <- tidyr::crossing(
 detach(p)
 library(tidybayes.rethinking)
 
-p_both <- tidy_link(lotta_time_to_repro, Big) %>% as.data.frame()
+p_both <- tidy_link(lotta_time_to_repro, M2) %>% as.data.frame()
 
 # put ages back on number scale
 p_both$age2 <- round((p_both$age*32)+13)
-
+#p_both$age3 <- (p_both$age2-58)*-1
 #  Observed vs predicted for lottas time to repro
 library(plotrix)
 # make new dataframe with raw data for time to reproduction
@@ -173,30 +189,36 @@ library(plotrix)
 #mk <- mk %>% filter (age_1939<56)
 non_lotta_df <- p %>% filter(lotta==0) 
 lotta_df <- p %>% filter(lotta==1)
-ndf <- non_lotta_df  %>% mutate (age = cut(age, breaks=c(16,20,24,28,32,36,48) )) %>% group_by(age) %>% 
+ndf <- non_lotta_df  %>% mutate (age = cut(age_1945_2, breaks=c(16,18,19,20,21,22,23,24,25,26,27,28,29,
+                                                         30,31,32,33,34,35,36,37,38,39,40,48) )) %>%
+group_by(age) %>% 
   summarise(mean.time.to.repro = mean(time_to_repro), sd.time.to.repro = sd(time_to_repro),
             se.time.to.repro=std.error(time_to_repro))
-ldf <- lotta_df %>% mutate (age = cut(age,breaks=c(16,20,24,28,32,36,48) )) %>% group_by(age) %>% 
+ldf <- lotta_df %>% mutate (age = cut(age_1945_2, breaks=c(16,18,19,20,21,22,23,24,25,26,27,28,29,
+                                                    30,31,32,33,34,35,36,37,38,39,40,48) )) %>% 
+  group_by(age) %>%
   summarise(mean.time.to.repro = mean(time_to_repro), sd.time.to.repro = sd(time_to_repro),
             se.time.to.repro=std.error(time_to_repro))
-newdf <- rbind(ndf,ldf)
+newdf <- rbind(ndf,ldf) %>% as.data.frame()
 #delete row with NA's - the row with non lottas between 12 and 16 years old
-#newdf <- newdf[-c(7), ]
+newdf <- newdf[-c(25,50), ]
 #newdf$age<- rep(c(0.21,0.3,0.4,0.5,0.6,0.7),2)
-newdf$lotta2 <- as.integer(c(rep(0,6),rep(1,6)))
-newdf$lotta3 <- as.integer(c(rep(2,6),rep(3,6)))
+newdf$lotta2 <- as.integer(c(rep(0,24),rep(1,24)))
+newdf$lotta3 <- as.integer(c(rep(2,24),rep(3,24)))
 #newdf[12,1:5] <- c(0.7, 2.5, 2.8, 0.09,1)
 #newdf[5,1:5] <- c(0.6, 3.27, 2.8, 0.05,0)
 #newdf[6,1:5] <- c(0.7, 3.5, 3.1, 0.07,0)
-newdf$age2 <- c(18,22,26,30,34,38,18,22,26,30,34,38)
+newdf$age2 <- c(17,18,19,20,21,22,23,24,25,26,27,28,29,
+                30,31,32,33,34,35,36,37,38,39,40,17,18,19,20,21,22,23,24,25,26,27,28,29,
+                30,31,32,33,34,35,36,37,38,39,40)
 newdf <- as.data.frame(newdf)
 
 # plot both together   
 
-#data <- p_both %>% left_join (newdf, by =c("age2"="age2","lotta"="lotta2"))
+data <- p_both %>% left_join (newdf, by =c("age2"="age2","lotta"="lotta2"))
 
 
-cols <- c("0" = "black", "1" = "grey", "2" = "black", "3" = "grey")
+cols <- c("0" = "darkblue", "1" = "darkgreen", "2" = "darkblue", "3" = "darkgreen")
 plot1 <- ggplot() +
   stat_lineribbon(data=p_both, aes(x=age2, y=lambda, group=factor(lotta),color=factor(lotta) ),.prob = c(.8 ),
                   show.legend=T) +
@@ -212,10 +234,12 @@ plot1 <- ggplot() +
   scale_color_manual(name="", breaks=c(0,1,2,3),values=cols,
                      labels=c("Non Lotta (predicted)", "Lotta (predicted)","Non Lotta (observed) +/- SE",
                               "Lotta (observed) +/- SE")) +
-  scale_x_continuous(name="Age in 1944",limits=c(16,40),breaks=c(18,22,26,30,34,38),
-                     labels=c("16-20", "21-24", "25-28", "29-32", "33-36","Over 36"))  +
-  scale_y_continuous(name="Time to reproduction (years)",breaks=c(2.5,5,7.5),limits=c(0,6.0),
-                     labels=c("2.5","5","7.5")) +
+  scale_x_continuous(name="Age in 1944",limits=c(17.5,40.5),breaks=c(18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,
+                                                                 34,35,36,37,38,39,40),
+                     labels=c("18","19","20","21","22","23","24", "25","26","27","28","29","30","31","32","33",
+                              "34","35","36","37","38","39","Over 40"))  +
+  scale_y_continuous(name="Time to reproduction (years)",breaks=c(1.5,3,4.5),limits=c(0,6.0),
+                     labels=c("1.5","3","4.5")) +
   #scale_fill_discrete(guide=guide_legend(title="V"))+
   #xlab("Age in 1939") + ylab("Number of Children") + 
   ggtitle("Young Lottas wait less time to\n give birth after war ends") + 
@@ -256,10 +280,10 @@ lotta_kids_after_war <- tidyr::crossing(
 detach(p)
 library(tidybayes.rethinking)
 
-p_both2 <- tidy_link(lotta_kids_after_war, Kids_after_war_new) %>% as.data.frame()
+p_both2 <- tidy_link(lotta_kids_after_war, M1) %>% as.data.frame()
 
 # put ages back on number scale
-p_both2$age2 <- round((p_both2$age*32)+13)
+p_both2$age2 <- round((p_both$age*32)+13)
 
 #  Observed vs predicted for lottas time to repro
 library(plotrix)
@@ -268,34 +292,41 @@ library(plotrix)
 #mk <- mk %>% filter (age_1939<56)
 non_lotta_df2 <- p %>% filter(lotta==0) 
 lotta_df2 <- p %>% filter(lotta==1)
-ndf2 <- non_lotta_df2  %>% mutate (age = cut(age, breaks=c(16,20,24,28,32,36,48) )) %>% group_by(age) %>% 
+ndf2 <- non_lotta_df2  %>% mutate (age = cut(age_1945_2, breaks=c(16,18,19,20,21,22,23,24,25,26,27,28,29,
+                                                                  30,31,32,33,34,35,36,37,38,39,40,48) )) %>% group_by(age) %>% 
   summarise(mean_kids_after_war = mean(kids_after_war), sd_kids_after_war = sd(kids_after_war),
             se_kids_after_war=std.error(kids_after_war))
-ldf2 <- lotta_df2 %>% mutate (age = cut(age,breaks=c(16,20,24,28,32,36,48) )) %>% group_by(age) %>% 
+ldf2 <- lotta_df2 %>% mutate (age = cut(age_1945_2, breaks=c(16,18,19,20,21,22,23,24,25,26,27,28,29,
+                                                             30,31,32,33,34,35,36,37,38,39,40,48) )) %>% group_by(age) %>% 
   summarise(mean_kids_after_war = mean(kids_after_war), sd_kids_after_war = sd(kids_after_war),
             se_kids_after_war=std.error(kids_after_war))
-newdf2 <- rbind(ndf2,ldf2)
+newdf2 <- rbind(ndf2,ldf2) %>% as.data.frame()
 #newdf$age<- rep(c(0.21,0.3,0.4,0.5,0.6,0.7),2)
-newdf2$lotta2 <- as.integer(c(rep(0,6),rep(1,6)))
-newdf2$lotta3 <- as.integer(c(rep(2,6),rep(3,6)))
+#delete row with NA's - the row with non lottas between 12 and 16 years old
+newdf2 <- newdf2[-c(25,50), ]
+#newdf$age<- rep(c(0.21,0.3,0.4,0.5,0.6,0.7),2)
+newdf2$lotta2 <- as.integer(c(rep(0,24),rep(1,24)))
+newdf2$lotta3 <- as.integer(c(rep(2,24),rep(3,24)))
 #newdf[12,1:5] <- c(0.7, 2.5, 2.8, 0.09,1)
 #newdf[5,1:5] <- c(0.6, 3.27, 2.8, 0.05,0)
 #newdf[6,1:5] <- c(0.7, 3.5, 3.1, 0.07,0)
-newdf2$age2 <- c(18,22,26,30,34,38,18,22,26,30,34,38)
+newdf2$age2 <- c(17,18,19,20,21,22,23,24,25,26,27,28,29,
+                30,31,32,33,34,35,36,37,38,39,40,17,18,19,20,21,22,23,24,25,26,27,28,29,
+                30,31,32,33,34,35,36,37,38,39,40)
 newdf2 <- as.data.frame(newdf2)
 
 # plot both together   
 
-#data2 <- p_both2 %>% left_join (newdf2, by =c("age2"="age2","lotta"="lotta2"))
 
 
-cols <- c("0" = "black", "1" = "grey", "2" = "black", "3" = "grey")
+
+cols <- c("0" = "darkblue", "1" = "darkgreen", "2" = "darkblue", "3" = "darkgreen")
 plot2 <- ggplot() +
   stat_lineribbon(data=p_both2, aes(x=age2, y=lambda, group=factor(lotta),color=factor(lotta) ),.prob = c(.8 ),
                   show.legend=T) +
-  geom_point(data=newdf2,position=position_dodge(width=0.01),aes(group=factor(lotta3),colour=factor(lotta3),
+  geom_point(data=newdf2,position=position_dodge(width=0.03),aes(group=factor(lotta3),colour=factor(lotta3),
                                                                 x = age2, y = mean_kids_after_war)) +
-  geom_errorbar(data=newdf2, position=position_dodge(width=0.01), aes(group=factor(lotta3),x=age2,
+  geom_errorbar(data=newdf2, position=position_dodge(width=0.03), aes(group=factor(lotta3),x=age2,
                                                                      colour=factor(lotta3),ymin=(mean_kids_after_war-se_kids_after_war),
                                                                      ymax=(mean_kids_after_war+se_kids_after_war))) +
   #geom_line(data=newdf,linetype="dotted",position=position_dodge(width=0.01), aes(colour=factor(outbred3), x = age, 
@@ -305,10 +336,12 @@ plot2 <- ggplot() +
   scale_color_manual(name="", breaks=c(0,1,2,3),values=cols,
                      labels=c("Non Lotta (predicted)", "Lotta (predicted)","Non Lotta (observed) +/- SE",
                               "Lotta (observed) +/- SE")) +
-  scale_x_continuous(name="Age in 1944",limits=c(16,40),breaks=c(18,22,26,30,34,38),
-                     labels=c("16-20","21-24", "25-28", "29-32", "33-36", "Over 36"))  +
-  scale_y_continuous(name="Total births after war",breaks=c(1.5,2.5,3.5),limits=c(1.0,4.0),
-                     labels=c("1.5","2.5","3.5")) +
+  scale_x_continuous(name="Age in 1944",limits=c(17.5,40.5),breaks=c(18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,
+                                                                 34,35,36,37,38,39,40),
+                     labels=c("18","19","20","21","22","23","24", "25","26","27","28","29","30","31","32","33",
+                              "34","35","36","37","38","39","Over 40"))   +
+  scale_y_continuous(name="Total births after war",breaks=c(1.5,2.5,3.5,4.5,5.5,6.5),limits=c(1.0,4.0),
+                     labels=c("1.5","2.5","3.5","4.5","5.5","6.5")) +
   #scale_fill_discrete(guide=guide_legend(title="V"))+
   #xlab("Age in 1939") + ylab("Number of Children") + 
   ggtitle("Young Lottas have more children\n after war ends") + 
@@ -323,3 +356,8 @@ plot2 <- ggplot() +
         axis.title.y = element_text(colour="black",size=12,angle=90,hjust=.5,vjust=.5,face="bold"))+
   guides( colour = guide_legend(override.aes = list(linetype=c(1,1,0,0)
                                                     , shape=c(NA,NA,16,16))))
+
+
+
+
+### this is the mean time to reproduction after the war ends not age at first birth

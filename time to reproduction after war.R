@@ -1,5 +1,5 @@
 path <- "C:/Users/rofrly/Dropbox/Working papers/R data files/"
-#path<-"/home/robert/Dropbox/Working papers/R data files/"
+path<-"/home/robert/Dropbox/Working papers/R data files/"
 file2<- "person_data.rds"
 p <- readRDS(paste0(path, file2))
 # load children data
