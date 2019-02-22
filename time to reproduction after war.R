@@ -1,8 +1,9 @@
-path <- "C:/Users/rofrly/Dropbox/Working papers/R data files/"
-path<-"/home/robert/Dropbox/Working papers/R data files/"
+path <- "C:/Users/rofrly/Dropbox/Github/data files/"
+#path <- "C:/Users/robert/Dropbox/Github/data files/"
 file2<- "person_data.rds"
 p <- readRDS(paste0(path, file2))
 # load children data
+file3 <- "children.rds"
 children <- readRDS("C:/Users/rofrly/Dropbox/Github/Lottas_2/children.rds")
 #children <- readRDS("/home/robert/Dropbox/Github/Lottas_2/children.rds")
 library(dplyr)

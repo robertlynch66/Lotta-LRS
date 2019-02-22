@@ -39,3 +39,12 @@ vignettes/*.pdf
 
 # End of https://www.gitignore.io/api/r
 .Rproj.user
+
+*.rds
+
+data_for_simon.rds
+data_for_michael.csv
+data_for_michael
+*.png
+
+/model results/
