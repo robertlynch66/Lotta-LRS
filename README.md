@@ -55,6 +55,13 @@ b_lotta_X_age          -0.02   0.02      -0.05       0.01   109 1.01
 sigma                   0.22   0.09       0.09       0.36    10 1.63
 b_lotta                 0.23   0.53      -0.65       0.94    96 1.02
 ```
-#### Full models
-For Full models and data use data frame 'person_data.rds' and for all models run for analyses use 
+#### Main Full models
+For Full models and data use data frame 'data.rds' for time to reproduction models and mean interbirth intervals models
+( reproductive women only) and use 'data2.rds' for all total reproductive after war models (includes non reprodcutive women)
+For 3 main models use 'main_models.R' code which is heavily commnented.
+
+#### All other analyses
+Use 'Final models in rethinking.R' for all analyses inclusing survival models
+
+and use 'sisters code.R' for analysis with subset of linked data only using sisters.
 'Final models in rethinking.R' file which is extrensively commented

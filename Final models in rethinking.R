@@ -926,8 +926,8 @@ path<- (paste0("~/r_files/"))
 
 # read in the data used to create the model map2 stan object and the model
 # read in person table and children table - up one directory
-#path <- "../data files/"
-#file2<- "person_data_old.rds"
+path <- "../data files/"
+file2<- "person_data_old.rds"
 p <- readRDS(paste0(path, file2))
 # load children data
 file3 <- "children.rds"
@@ -936,7 +936,6 @@ p <- p %>% filter (sex==0)
 p <- p %>% filter (birthyear < 1940 & age_at_first_birth > 12 & age_at_first_birth < 51 | is.na(age_at_first_birth))#80708
 
 
-p$martta<- as.numeric(p$martta)
 p$lotta<- as.numeric(p$lotta)
 p$never_married <- ifelse(is.na(p$spouse_id), 1, 0)
 p$age_1945 <- 1945-p$birthyear
@@ -1072,12 +1071,6 @@ ttr <- ttr%>% arrange(birthplaceid)
 ttr$birthplaceid_seq <- cumsum(c(1,as.numeric(diff(ttr$birthplaceid))!=0))
 
 
-
-
-
-M3 <- readRDS("model results/Kids_after_war_mixed_model_noagesq.rds")
-
-
 # add non repros
 path <- "../data files/"
 # read in person table
@@ -1167,7 +1160,7 @@ saveRDS(model, paste0(path, filename))
 ### mean birth intervals includes non repros - this is for the survival model in Supp materials Table S4
 path <- "../data files/"
 # read in person table
-file<- "person_data.rds"
+file<- "person_data_old.rds"
 p <- readRDS(paste0(path, file))
 file<- "children.rds"
 children <- readRDS(paste0(path, file))

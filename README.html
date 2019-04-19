@@ -142,27 +142,21 @@ $(document).ready(function () {
 <pre class="{r}"><code>install.packages(c(&quot;coda&quot;,&quot;mvtnorm&quot;,&quot;devtools&quot;,&quot;loo&quot;))
 library(devtools)
 devtools::install_github(&quot;rmcelreath/rethinking&quot;)</code></pre>
-<div id="installation" class="section level2">
-<h2>Installation</h2>
-<p>Use the package manager <a href="https://pip.pypa.io/en/stable/">pip</a> to install foobar.</p>
-<pre class="bash"><code>pip install foobar</code></pre>
+<div id="usage-on-random-sample-to-make-sure-evfrything-is-working" class="section level2">
+<h2>Usage on random sample to make sure evfrything is working</h2>
+<p>Read in random sample of actual data (200 random rows from data frame) - from dataframe ‘data_sample.rds’ See ‘simple exmaple.R’ for code</p>
+<p>Next make data list from data frame</p>
+<ul>
+<li>use these data to run ‘map2stan’ model in rethinking</li>
+</ul>
+<p>Code in ‘simple example.R’ file uses 4 chains with 200 iterations and 100 warmup iterations.</p>
+<p>Warnings will be shown but code should run if Stan and rethinking were properly installed in previous steps</p>
+<p>-expected output <code>{r output} &gt; precis(model) 101 vector or matrix parameters omitted in display. Use depth=2 to show them.                         Mean StdDev lower 0.89 upper 0.89 n_eff Rhat Intercept               0.34   0.33      -0.12       0.93   150 1.01 b_age                  -0.01   0.01      -0.03       0.00   154 1.01 b_birth_cat             0.64   0.15       0.40       0.85   295 1.00 b_education            -0.24   0.26      -0.64       0.21   303 1.00 b_agriculture           0.40   0.13       0.18       0.60   515 1.00 b_repro_within_2_years  0.33   0.16       0.07       0.58   591 1.00 b_lotta_X_age          -0.02   0.02      -0.05       0.01   109 1.01 sigma                   0.22   0.09       0.09       0.36    10 1.63 b_lotta                 0.23   0.53      -0.65       0.94    96 1.02</code> #### Main Full models For Full models and data use data frame ‘data.rds’ for time to reproduction models and mean interbirth intervals models ( reproductive women only) and use ‘data2.rds’ for all total reproductive after war models (includes non reprodcutive women) For 3 main models use ‘main_models.R’ code which is heavily commnented.</p>
+<div id="all-other-analyses" class="section level4">
+<h4>All other analyses</h4>
+<p>Use ‘Final models in rethinking.R’ for all analyses inclusing survival models</p>
+<p>and use ‘sisters code.R’ for analysis with subset of linked data only using sisters. ‘Final models in rethinking.R’ file which is extrensively commented</p>
 </div>
-<div id="usage" class="section level2">
-<h2>Usage</h2>
-<pre class="python"><code>import foobar
-
-foobar.pluralize('word') # returns 'words'
-foobar.pluralize('goose') # returns 'geese'
-foobar.singularize('phenomena') # returns 'phenomenon'</code></pre>
-</div>
-<div id="contributing" class="section level2">
-<h2>Contributing</h2>
-<p>Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.</p>
-<p>Please make sure to update tests as appropriate.</p>
-</div>
-<div id="license" class="section level2">
-<h2>License</h2>
-<p><a href="https://choosealicense.com/licenses/mit/">MIT</a></p>
 </div>
 </div>
 
