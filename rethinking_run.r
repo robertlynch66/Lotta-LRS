@@ -2,18 +2,21 @@
 library(dplyr)
 library(rethinking)
 library(tidyr)
-library(rstanarm)
+#library(rstanarm)
 
 
 # path to the folder with the R data files
 path<- (paste0("~/r_files/"))
-#path <- "../data files/"
-# read in person table
-file<- "person_data.rds"
-p <- readRDS(paste0(path, file))
-file<- "children.rds"
-children <- readRDS(paste0(path, file))
 
+
+# read in the data used to create the model map2 stan object and the model
+# read in person table and children table - up one directory
+path <- "../data files/"
+file2<- "person_data.rds"
+p <- readRDS(paste0(path, file2))
+# load children data
+file3 <- "children.rds"
+children<-readRDS(paste0(path,file3))
 p <- p %>% filter (sex==0)
 p <- p %>% filter (birthyear < 1940 & age_at_first_birth > 12 & age_at_first_birth < 51 | is.na(age_at_first_birth))#80708
 
@@ -30,8 +33,8 @@ p$birth_cat <- ifelse(p$first_child_yob<1944, 0, 1)
 
 p <- p %>% select ("id","lotta","birthyear","agriculture","education",
                    "age_at_first_birth","age_1945","birth_cat","kids","birthplaceid")
-p <- p[complete.cases(p), ] # 48223
-# 22878 started before war ends and 25558 started having kids after 1944 
+p <- p[complete.cases(p), ] # 47793
+# 22544 started before war ends and 25249 started having kids after 1944 
 
 # link children table 
 children1 <- children %>% select ("id","birthYear","primaryParentId")
@@ -61,7 +64,7 @@ p$year <- mapply(seq, p$birth_plus_13, p$lastapp, SIMPLIFY = FALSE)
 
 #unnest creates a new row for each different value within a "cell" - 
 #this is taken from the 'year' column created above
-p_long <- unnest(p, year) #1546317
+p_long <- unnest(p, year) #1550622
 
 # Now all women are censored either at age 45 or at the year of their interview
 
@@ -111,20 +114,8 @@ dummy <- dummy %>% select ("id","repro_within_2_years")
 # # make a time to repro after 1945 variable
 ttr <- twins %>% arrange(id) %>% group_by (id) %>%
   filter (reproduced==1 & year>1944) %>% mutate (time_to_repro=age_in_year-age_1945)
-# preserve this varibale for birth intervals model
-birth_ints <- twins %>% arrange(id) %>% group_by (id) %>%
-  filter (reproduced==1 & year>1944) %>% mutate (time_to_repro=age_in_year-age_1945) %>% as.data.frame()
-
-# get the sequential difference - birth interval by id's
-birth_ints <- birth_ints %>%
-  group_by(id) %>%
-  mutate(Diff = time_to_repro - lag(time_to_repro)) %>% as.data.frame()
-
-birth_ints$ttr_2 <- ifelse(is.na(birth_ints$Diff),birth_ints$time_to_repro,birth_ints$Diff)
-birth_ints$Diff <- NULL
 
 
-#####
 
 ttr_2 <- ttr  %>% group_by (id) %>%
   dplyr::summarise(maximum= max(time_to_repro)) 
@@ -155,38 +146,97 @@ ttr$age_sq <- ttr$age_1945*ttr$age_1945
 # key line select ages
 ttr <- ttr[which(ttr$age_1945>12 & ttr$age_1945<46),]
 
-#put age in 1945 on the model prediction scale (i.e. the way it went into the model in rethinking)
+#put age in 1945 on the model prediction scale (i.e. the way it went into the mdel in rethinking)
 ttr$age_1945_sc <- ttr$age_1945-min(ttr$age_1945)
 ttr$age_1945_sc <- ttr$age_1945/max(ttr$age_1945)
 #p$age_sq = p$age_sq - min(p$age_sq)
 #p$age_sq = p$age_sq/max(p$age_sq)
-ttr<-ttr %>% as.data.frame()  #31607
-#ttr$post_war_repro_rate <- as.integer(ttr$post_war_repro_rate)
-#map2stan formula
+ttr<-ttr %>% as.data.frame()  #31613
+
+ttr <- ttr%>% arrange(birthplaceid)
+ttr$birthplaceid_seq <- cumsum(c(1,as.numeric(diff(ttr$birthplaceid))!=0))
+
+
+
+# read in person table
+
+d <- readRDS(paste0(path, file2))
+
+d <- d %>% filter (sex==0)
+d <- d %>% filter (birthyear < 1940 & age_at_first_birth > 12 & age_at_first_birth < 51 | is.na(age_at_first_birth))#80708
+
+d$lotta<- as.numeric(d$lotta)
+d$age_1945 <- 1945-d$birthyear
+d <- d %>% filter(kids==0)
+d$birth_cat <- 0
+d$time_to_repro <- 25
+d$lotta <- as.numeric(d$lotta)
+d$repro_within_2_years <- 0
+d$kids_after_war <- 0
+d$reproduced <- 0
+# 28992 started before war ends and 31137 started having kids after 1944 
+
+
+d <- d %>% select ("id","kids_after_war","time_to_repro","lotta","birth_cat","age_1945",
+                   "agriculture","repro_within_2_years","education","birthplaceid" )
+d$reproduced <- 0
+d$kids_after_war<- as.integer(d$kids_after_war)
+d <- d[complete.cases(d), ] # 10172 no repros
+
+# rbind the 2 data frames
+ttr <- ttr %>% select("id","kids_after_war","time_to_repro","lotta","birth_cat","age_1945",
+                      "agriculture","repro_within_2_years","education","birthplaceid")
+ttr$reproduced <- 1
+data <- rbind(d,ttr)# 41,946
+data <- data %>% filter(age_1945>15 & age_1945<45) #37,613
+data <- data%>% arrange(birthplaceid)
+data$birthplaceid_seq <- cumsum(c(1,as.numeric(diff(data$birthplaceid))!=0))
+data <- as.data.frame(data)
 # run in rethinking
 data_list <- list(
-  pwrr = ttr$post_war_repro_rate,
-  lotta  = ttr$lotta,
-  birth_cat = ttr$birth_cat,
-  repro_cat = ttr$repro_within_2_years,
-  age = ttr$age_1945,
-  agriculture = ttr$agriculture,
-  education = ttr$education,
-  birthplace_id = ttr$birthplaceid)
+  kaw = data$kids_after_war,
+  lotta  = data$lotta,
+  birth_cat = data$birth_cat,
+  repro_cat = data$repro_within_2_years,
+  age = data$age_1945,
+  agriculture = data$agriculture,
+  education = data$education,
+  birthplace_id = data$birthplaceid_seq)
 
-model <- stan_glmer(pwrr ~ 
-                      lotta + 
-                      birth_cat + 
-                      repro_cat + 
-                      age +
-                      agriculture +
-                      education +
-                      (1 | birthplace_id), 
-                    family = gamma, data = data_list,chains = 4, iter = 8000, warmup = 2000,control=list(max_treedepth=20))
+model <- map2stan(
+  alist(
+    kaw ~ dpois(lambda),
+    log(lambda) <- Intercept +
+      a_birthplace_id[birthplace_id] +
+      b_lotta*lotta +
+      b_age*age +
+      b_birth_cat*birth_cat +
+      b_education*education +
+      b_agriculture*agriculture +
+      b_repro_within_2_years*repro_cat +
+      b_lotta_X_age*lotta*age,
+    
+    a_birthplace_id[birthplace_id] ~ dnorm (0, sigma),
+    sigma ~ dcauchy (0,1),
+    Intercept ~ dnorm(0,1),
+    b_lotta ~ dnorm(0,1),
+    b_age ~ dnorm(0,1),
+    b_education ~ dnorm(0,1),
+    b_birth_cat ~ dnorm(0,1),
+    b_agriculture ~ dnorm(0,1),
+    b_repro_within_2_years ~ dnorm(0,1),
+    b_lotta_X_age ~ dnorm(0,1)
+  ),
+  data=data_list, iter=6000, warmup=1500, control=list(max_treedepth=20),
+  chains =4, cores=4,start=list(Intercept=mean(data$kids_after_war),b_age=0,
+                                b_birth_cat=0,b_education=0,
+                                b_agriculture=0,b_repro_within_2_years=0,
+                                b_lotta_X_age=0))
+
 
 
 
 path<- (paste0("results/"))
-filename <- "Post_war_repro_rate_repros_only_rstanarm.rds"
+filename <- "Kids_after_war_includes_non_repros.rds"
 
 saveRDS(model, paste0(path, filename))
