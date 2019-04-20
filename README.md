@@ -32,9 +32,9 @@ devtools::install_github("rmcelreath/rethinking")
 Read in random sample of actual data (200 random rows from data frame) - from dataframe 'data_sample.rds'
 See 'simple exmaple.R' for code
 
-Next make data list from data frame
+Next make data list from data frame:
 
-- use these data to run 'map2stan' model in rethinking
+- Use these data to run a 'map2stan' model in the 'rethinking' package in R
 
 Code in 'simple example.R' file uses 4 chains with 200 iterations and 100 warmup iterations.
 
@@ -61,7 +61,7 @@ For Full models and data use data frame 'data.rds' for time to reproduction mode
 For 3 main models use 'main_models.R' code which is heavily commnented.
 
 #### All other analyses
-Use 'Final models in rethinking.R' for all analyses inclusing survival models
+Use 'Final models in rethinking.R' which is externsively commented for all analyses used in the paper including survival models.
 
-and use 'sisters code.R' for analysis with subset of linked data only using sisters.
-'Final models in rethinking.R' file which is extrensively commented
+Use 'sisters code.R' for analysis with subset of linked data only using sisters,
+This file is also extensively commented.
