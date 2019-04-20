@@ -27,7 +27,7 @@ devtools::install_github("rmcelreath/rethinking")
 ```
 
 
-## Usage on random sample to make sure evfrything is working
+## Usage on random sample of 200 rows to make sure everything is working
 
 Read in random sample of actual data (200 random rows from data frame) - from dataframe 'data_sample.rds'
 See 'simple exmaple.R' for code
@@ -42,18 +42,18 @@ Warnings will be shown but code should run if Stan and rethinking were properly 
 
 -expected output
 ```{r output}
-> precis(model)
+ precis(model)
 101 vector or matrix parameters omitted in display. Use depth=2 to show them.
                         Mean StdDev lower 0.89 upper 0.89 n_eff Rhat
-Intercept               0.34   0.33      -0.12       0.93   150 1.01
-b_age                  -0.01   0.01      -0.03       0.00   154 1.01
-b_birth_cat             0.64   0.15       0.40       0.85   295 1.00
-b_education            -0.24   0.26      -0.64       0.21   303 1.00
-b_agriculture           0.40   0.13       0.18       0.60   515 1.00
-b_repro_within_2_years  0.33   0.16       0.07       0.58   591 1.00
-b_lotta_X_age          -0.02   0.02      -0.05       0.01   109 1.01
-sigma                   0.22   0.09       0.09       0.36    10 1.63
-b_lotta                 0.23   0.53      -0.65       0.94    96 1.02
+Intercept               0.15   0.18      -0.12       0.46   319 0.99
+b_age                  -0.42   0.28      -0.82       0.07   249 0.99
+b_birth_cat             0.63   0.15       0.39       0.88   382 1.00
+b_education            -0.24   0.26      -0.62       0.17   277 1.01
+b_agriculture           0.40   0.13       0.22       0.62   411 1.00
+b_repro_within_2_years  0.32   0.17       0.07       0.59   608 1.00
+b_lotta_X_age          -0.37   0.52      -1.18       0.41    78 1.02
+sigma                   0.21   0.09       0.06       0.34     6 1.56
+b_lotta                -0.08   0.26      -0.49       0.31   132 1.01
 ```
 #### Main Full models
 For Full models and data use data frame 'data.rds' for time to reproduction models and mean interbirth intervals models
